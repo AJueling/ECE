@@ -1,4 +1,6 @@
 
+path_data = '/home/users/ajuling/ECE/data'
+
 # example files
 
 # gws: group workspace

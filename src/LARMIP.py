@@ -1,20 +1,22 @@
 import os
 import sys
-activate_file = os.path.join('/home/users/ajuling/nb-venvs/venv-cmip6-zarr/bin/activate_this.py')
-exec(open(activate_file).read(), dict(__file__=activate_file))
+import glob
+# activate_file = os.path.join('/home/users/ajuling/nb-venvs/venv-cmip6-zarr/bin/activate_this.py')
+# exec(open(activate_file).read(), dict(__file__=activate_file))
 
 import dask
 import numpy as np
+import pandas as pd
 import xarray as xr
 
+from paths import path_data
 from iterate import IterateECE
 from tqdm.auto import tqdm
 
-path_data = '/home/users/ajuling/ECE/data'
 
-dz = xr.open_dataarray(f'{path_data}/T511-ORCA025/dz.nc')
-zub = xr.open_dataarray(f'{path_data}/T511-ORCA025/zub.nc')
-zlb = xr.open_dataarray(f'{path_data}/T511-ORCA025/zlb.nc')
+# dz = xr.open_dataarray(f'{path_data}/T511-ORCA025/dz.nc')
+# zub = xr.open_dataarray(f'{path_data}/T511-ORCA025/zub.nc')
+# zlb = xr.open_dataarray(f'{path_data}/T511-ORCA025/zlb.nc')
 
 area_255 = xr.open_dataset(f'{path_data}/T255-ORCA1/areas.nc')['O1t0.srf'].rename({'x_3':'i','y_3':'j'})
 area_511 = xr.open_dataset(f'{path_data}/T511-ORCA025/areas.nc')['Ot25.srf'].rename({'x_3':'i','y_3':'j'})
@@ -95,6 +97,45 @@ def calc_Levermann_timeseries(area, thetao):
                       data=avgs
                      )
     return ds
+
+
+def read_larmip2_lrf(data_dir, basal_melt):
+    """
+    copied from https://github.com/KNMI-sealevel/KPZ/blob/main/notebooks/CompLRF.ipynb
+    Read LARMIP2 Linear Response Functions downloaded from:
+    https://github.com/ALevermann/Larmip2019.
+    Basal melt is in m.y-1. BM02, BM04, BM08, BM16 are available. 
+    basal_melt = BM08 is used in Levermann et al. 2020.
+    """
+    
+    reg_names = {'R1':'EAIS', 'R2':'Ross', 'R3':'Amundsen', 
+                 'R4':'Weddell', 'R5':'Peninsula'}
+
+    for idb, reg in enumerate(reg_names):
+        path = f'{data_dir}/RF_*_{basal_melt}_{reg}.dat'
+        files = glob.glob(path)
+
+        for idf, f in enumerate(files):
+            ds = pd.read_csv(f, names=['RF']).to_xarray()
+            f2 = f.split('/')[-1]
+            ds = ds.expand_dims({'model': [f2[3:-12]]})
+            
+            if idf ==0:
+                ds2 = ds
+            else:
+                ds2 = xr.concat([ds2, ds], dim='model')
+
+        ds2 = ds2.expand_dims({'region': [reg_names[reg]]})
+        if idb == 0:
+            RF = ds2
+        else:
+            RF = xr.concat([RF, ds2], dim='region')
+
+    RF = RF.rename({'index' : 'time'})
+    RF = RF.transpose('region', 'model', 'time')
+    
+    return RF.RF
+
 
 # for da, src, exp, mem in IterateECE(var='thetao', cat='jasmin-nc'):
 # for da, src, exp, mem in IterateECE(var='thetao', source='EC-Earth3P', cat='jasmin-nc'):
