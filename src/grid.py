@@ -8,7 +8,7 @@ def spher_surf_element(r, dtheta, lat_N, lat_S):
     return r**2 * dtheta * (np.sin(lat_N)-np.sin(lat_S))
 
 def lat_lon_area(da):
-    """ generates surface area [m^2] of a rectangular grid 
+    """ generates surface area [m^2] of a rectangular grid with 
     where the input `da` is a dataraay with `lat` and `lon` coordinates
     useful for IFS grids
     """

@@ -13,12 +13,12 @@ table_id = {
     'thetaoga':'Omon',  # potential temperature global average
     'tos':'Omon',       # SST
     'pr':'Amon',        # precipitation
-    'mrro':'day',       # runoff
+    'mrro':'Lmon',      # runoff
     'evspsbl':'Amon',   # evaporation
 }
 
 def subselect_sysargv(sysargv):
-    """ takes sys.argv input to python file and returns subselected names of specific simulations"""
+    """ takes sys.argv input to python file and returns subselected names of specific simulations """
     if len(list(sysargv))==4:
         source, experiment, member = sysargv[1], sysargv[2], sysargv[3]
     elif len(list(sysargv))==3:
@@ -39,11 +39,23 @@ def zarr_df_to_ds(df):
     return xr.open_dataset(fsmap, consolidated=True, use_cftime=True, engine='zarr')
 
 
+# for da, src, exp, mem in IterateECE(var='thetao', cat='jasmin-nc'):
+# for da, src, exp, mem in IterateECE(var='thetao', source='EC-Earth3P', cat='jasmin-nc'):
+# for da, src, exp, mem in IterateECE(var='thetao', source='EC-Earth3P-HR', cat='jasmin-nc'):
+
 class IterateECE():
-    """ Iterates over EC-Earth datasets
+    """ Iterates over EC-Earth datasets in a given catalogue
     
     example:
-    for ds in IterateECE(var='tas', cat='ceda', source='EC-Earth3P-HR', experiment='highres-future', member='r1i1p2f1')
+    `for ds in IterateECE(var='tas',
+                          cat='ceda',
+                          source='EC-Earth3P-HR',
+                          experiment='highres-future',
+                          member='r1i1p2f1')`
+                          
+    returns:
+    da   xr.DataArray              (if only_filenames==False)
+         list of filenames         (if only_filenames==True)
     """
     def __init__(self, var, cat='ceda', source=None, experiment=None, member=None, test=False, only_filenames=False, verbose=True):
         assert cat in ['ceda','knmi','jasmin-nc']

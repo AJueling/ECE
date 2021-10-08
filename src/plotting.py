@@ -114,6 +114,17 @@ def plot_Bintanja2017(ax_FW, c='C9'):
         ax_FW[1].plot(t, (np.cumsum(f)-np.cumsum(f)[10])/1e3, c=c)
     return
 
+def plot_CORDEX(ax_R, c='C7'):
+    areacella = xr.open_dataset('../../data/CORDEX-RACMO/areacella_ANT-44_ECMWF-ERAINT_evaluation_r1i1p1_KNMI-RACMO21P_v1_fx.nc').areacella  # [m^2]
+    ds = xr.open_mfdataset('../../data/CORDEX-RACMO/mrro_ANT-44_MOHC-HadGEM2-ES_rcp85*.nc')
+    
+    da = (ds['mrro']*areacella*3600*24*30/1e12).sum(['rlat','rlon'])
+    ax_R[0].plot(da.time.dt.year[::12], 
+                 da.groupby('time.year').sum(), c=c)
+    ax_R[1].plot(da.time,
+                 da.cumsum('time'), c=c)
+    return
+
 def plot_AIS_scenario(ax_FW, c='C1'):
     """ 
     (1) scenario = LARMIP + CORDEX
@@ -124,8 +135,8 @@ def plot_AIS_scenario(ax_FW, c='C1'):
     da = da.sel(exp='highres-future') \
        - da.sel(exp='control-1950').mean('year')
     fwf = da.sel(var='pr')+da.sel(var='evspsbl')
-    ax_FW[0].plot(da.year, 10*fwf, c='r', ls='--', label='model-internal')
-    ax_FW[1].plot(da.year, 10*np.cumsum(fwf)/1e3, c='r', ls='--')
+    ax_FW[0].plot(da.year, fwf, c='r', ls='--', label='model-internal')
+    ax_FW[1].plot(da.year, np.cumsum(fwf)/1e3, c='r', ls='--')
     return
 
 
