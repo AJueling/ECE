@@ -141,6 +141,20 @@ def read_larmip2_lrf(data_dir, basal_melt):
     return RF.RF
 
 
+def ensemble_fit(da, deg=1):
+    """ fits a polynomial to timeseries """
+    assert 'exp' in da.coords
+    assert 'year' in da.coords
+    if len(da.exp.values.shape)==0:
+        n = 1
+    elif len(da.exp.values.shape)==1:
+        n = len(da.exp.values)
+    x = np.concatenate(len(da.mem)*n*[da.year.values])
+    y = da.values.flatten(order='F')
+    idx = np.isfinite(x) & np.isfinite(y)
+    x, y = x[idx], y[idx]
+    pf = np.polynomial.polynomial.polyfit(x, y, deg)
+    return x, y, pf
 
 
 if __name__ == '__main__':  # calculate the LARMIP temperatures
