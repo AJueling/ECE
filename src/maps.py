@@ -1,5 +1,12 @@
 import numpy as np
 
+proj_GrIS = {'central_latitude':72,
+             'central_longitude':-42,
+             'standard_parallels':[66,78],
+             'cutoff':55}
+
+
+
 
 def rect_polygon(extent):
     assert type(extent)==tuple
