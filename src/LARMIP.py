@@ -166,12 +166,12 @@ def ensemble_fit(da, deg=1):
 if __name__ == '__main__':  # calculate the LARMIP temperatures
     source, experiment, member = subselect_sysargv(sys.argv)
     for da, src, exp, mem in IterateECE(var='thetao',
-                                            source=source,
-                                            experiment=experiment,
-                                            member=member,
-                                            cat='jasmin-nc',
-                                            only_filenames=(source=='EC-Earth3P-HR')
-                                           ):
+                                        source=source,
+                                        experiment=experiment,
+                                        member=member,
+                                        cat='jasmin-nc',
+                                        only_filenames=(source=='EC-Earth3P-HR')
+                                       ):
         print(src, exp, mem)
         fn = f'../results/LARMIP/LARMIP_{src}_{mem}_{exp}.nc'
         if os.path.exists(fn):

@@ -86,6 +86,8 @@ class IterateECE():
             fn_col = 'https://raw.githubusercontent.com/cedadev/cmip6-object-store/master/catalogs/ceda-zarr-cmip6.json'
         elif self.cat=='jasmin-nc':
             fn_col = '/home/users/ajuling/EC-Earth3-data/jasmin_nc_highresmip.json'
+        elif self.cat=='ecmwf-cca-scratch':
+            fn_col = '/home/ms/nl/nkaj/EC-Earth3-data/ecmwf_cca_scratch.json'
         else:
             raise ValueError(f'cat={cat} not yet implemented')
         col = intake.open_esm_datastore(fn_col)
