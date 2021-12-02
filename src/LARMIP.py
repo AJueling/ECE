@@ -34,6 +34,12 @@ Lregs = dict(rEAIS = [-76,-65,350,175,369],
              rPen2 = [-75,-70,285,295,420],
 )
 
+freg = {'rEAIS': [.50, .50],
+        'rRoss': [.68, .32],
+        'rAmun': [.29, .71],
+        'rWedd': [.62, .38],
+        'rPen' : [.27, .73]}
+
 
 def create_zw(D, dz, verbose=False):
     """ creates (partial) depth array for cells 100 m around depth D, i.e. +/- 50 m """

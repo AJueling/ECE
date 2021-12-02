@@ -23,6 +23,8 @@ if __name__ == '__main__':
         col_fn = '../../EC-Earth3-data/ceda_nc_highresmip.json'
     elif store=='jasmin-nc':
         col_fn = '../../EC-Earth3-data/jasmin_nc_highresmip.json'
+    elif store=='ecmwf-cca-scratch':
+        col_fn = '../../EC-Earth3-data/ecmwf_cca_scratch.json'
     col = intake.open_esm_datastore(col_fn)
 
     cat = col.search(institution_id="EC-Earth-Consortium", variable_id='ta')
