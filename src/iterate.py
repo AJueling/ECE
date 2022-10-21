@@ -58,7 +58,7 @@ class IterateECE():
          list of filenames         (if only_filenames==True)
     """
     def __init__(self, var, cat='ceda', source=None, experiment=None, member=None, test=False, only_filenames=False, verbose=True):
-        assert cat in ['ceda','knmi','jasmin-nc']
+        assert cat in ['ceda','knmi','jasmin-nc','ecmwf-cca-scratch']
         self.cat = cat
         assert var in table_id.keys()
         self.var = var

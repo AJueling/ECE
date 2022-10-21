@@ -1,5 +1,6 @@
 
-path_data = '/home/users/ajuling/ECE/data'
+#path_data = '/home/users/ajuling/ECE/data'
+path_data = '/perm/ms/nl/nkaj/ECE/data'
 
 # example files
 

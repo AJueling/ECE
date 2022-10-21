@@ -169,10 +169,11 @@ if __name__ == '__main__':  # calculate the LARMIP temperatures
                                         source=source,
                                         experiment=experiment,
                                         member=member,
-                                        cat='jasmin-nc',
+                                        cat='ecmwf-cca-scratch',#'jasmin-nc',
                                         only_filenames=(source=='EC-Earth3P-HR')
                                        ):
         print(src, exp, mem)
+        print(da)
         fn = f'../results/LARMIP/LARMIP_{src}_{mem}_{exp}.nc'
         if os.path.exists(fn):
             continue
