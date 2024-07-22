@@ -1,11 +1,17 @@
 import numpy as np
+import matplotlib.path as mpath
 
 proj_GrIS = {'central_latitude':72,
              'central_longitude':-42,
              'standard_parallels':[66,78],
              'cutoff':55}
 
-
+# for round circular plot
+# ax.set_boundary(circle, transform=ax.transAxes)
+theta = np.linspace(0, 2*np.pi, 100)
+center, radius = [0.5, 0.5], 0.5
+verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+circle = mpath.Path(verts * radius + center)
 
 
 def rect_polygon(extent):
