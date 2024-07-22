@@ -1,17 +1,39 @@
 """
+This class creates the freshwater forcing files that work with the fwf branch of EC-Earth3
 
+Paths might need to be updated
 
+created by André Jüling
+last updated 2024-07-18
 """
 import os
 import sys
 import numpy as np
 import xarray as xr
+from pathlib import Path
+
 
 spy = 3600*24*365   # [s yr^-1]
 
-path_grid = '../../ECE/data'
+path_grid = '/home/nkaj/ECE/data'
 path_fwf = '../../ECE/results/FWF'
 path_fwfmap_files = '../'
+
+sofiamip_exps = [
+    'antwater',
+    'hist-antwater-70-01',
+    'hist-antwater-70-03',
+    'hist-antwater-70-05',
+    'hist-antwater-92-11',
+    'ssp126-ismip6-water',
+    'ssp585-ismip6-water',
+    'antwater-60S',
+    'antwater-lh',
+    'antwater-ambe',
+    'antwater-depth',
+    'antwater-depth-lh',
+    'antwater-ambe-depth-lh',
+    ]
 
 class FwfMaps:
     """ create freshwater forcing files for EC-Earth experiments 
@@ -25,12 +47,14 @@ class FwfMaps:
     """
     def __init__(self, res, exp):
         """
-        - initialize with resolution ('SR' or 'HR')and experiment names
-        - reads areacello
+        - reads areacello.nc for respective grid
+        - initialize with 
+        res     resolution ('SR' or 'HR')
+        exp     experiment names
         """
         self.res = res
         self.exp = exp
-        assert exp in ['simple', 'complex', 'fafmip', 'eveline']
+        assert exp in ['simple', 'complex', 'eveline'] + sofiamip_exps
 
         if res=='SR':    self.gnem, self.gifs = '1', '255'
         elif res=='HR':  self.gnem, self.gifs = '025', '511'
@@ -40,12 +64,13 @@ class FwfMaps:
             self.areacello = xr.open_dataset(fn_areacello).areacello
         else:
             raise ValueError(f'areacello filename: {fn_areacello} does not exist')
-
+        self.create_forcing_files()
         return
 
-    def create_map(self, year=None):
+    def create_forcing_files(self, year=None):
         """ """
-        if self.exp in ['simple', 'complex']:
+        exp = self.exp
+        if exp in ['simple', 'complex']:
             assert year is not None
             dA = xr.open_dataset(f'{path_fwf}/AIS_FWF.nc')
             dG = xr.open_dataset(f'{path_fwf}/GrIS_FWF.nc')
@@ -79,9 +104,15 @@ class FwfMaps:
                 
                 self.test_output()
 
-        elif self.exp=='fafmip':
-            self.fn_out = f'../fafmip_forcing/FWF_fafmip_antwater_ORCA{self.gnem}.nc'
-            self.create_fafmip_map()
+        elif exp in sofiamip_exps:
+            self.fn_out = f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}/FWF_{exp}_ORCA{self.gnem}.nc'
+            Path(f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}').mkdir(parents=True, exist_ok=True)
+            if exp=='antwater':
+                self.create_antwater_file()
+            elif exp=='antwater-lh':
+                self.create_antwater_lh_file()
+            elif exp=='antwater-depth-lh':
+                self.create_antwater_depth_lh_files()
             self.test_output()
 
         elif self.exp=='eveline':
@@ -98,12 +129,12 @@ class FwfMaps:
         Aa = self.areacello.where(rmf==66).sum()
         Ga = self.areacello.where(rmf==1).sum()
 
-        for i, quant in enumerate(['sorunoff_f','socalving_f']):
-            if quant=='sorunoff_f': 
+        for i, quant in enumerate(['sofwfrnf','sofwfcal']):
+            if quant=='sofwfrnf': 
                 # GrIS: Runoff
                 Q = xr.where(rmf==1,self.GR/Ga,0)
                 long_name = 'forced runoff flux'
-            elif quant=='socalving_f':
+            elif quant=='sofwfcal':
                 # GrIS: Discharge;  AIS:  Discharge + Basal Melt
                 Q = (xr.where(rmf==1,self.GD/Ga,0) + xr.where(rmf==66,(self.AD+self.AB)/Aa,0))
                 long_name = 'forced calving flux'
@@ -130,11 +161,7 @@ class FwfMaps:
         FWF.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
         pass
 
-    def create_fafmip_map(self):
-        """
-        - climatological file without yearly variations
-        - uniformly distributes 0.1 Sv in Antarctica-adjacent NEMO cells
-        """
+    def create_Antarctic_coast(self):
         ac = self.areacello
         ac = ac.fillna(0)
         rmf = xr.open_dataarray(f'{path_grid}/T{self.gifs}-ORCA{self.gnem}/runoff_maps_AIS_GrIS_ORCA{self.gnem}.nc')
@@ -146,41 +173,79 @@ class FwfMaps:
                 xr.where(ac-ac.shift(j=-1)==ac, ac, 0)
         coast = coast/coast*ac
 
-        ac_fafmip = coast.where(rmf==66).where(coast>0)
-        ac_fafmip = xr.where(ac_fafmip,ac_fafmip,0)
-        print(f'integrated area of circum-Antarctic cells: {ac_fafmip.sum().values/1e12} million km^2')
-        print(f'length circum-Antarctic cells at 100 km width: {ac_fafmip.sum().values/1e5/1e3} km')
+        ac_antwater = coast.where(rmf==66).where(coast>0)
+        ac_antwater = xr.where(ac_antwater,ac_antwater,0)
+        print(f'integrated area of circum-Antarctic cells: {ac_antwater.sum().values/1e12} million km^2')
+        print(f'length circum-Antarctic cells at 100 km width: {ac_antwater.sum().values/1e5/1e3} km')
+        return ac_antwater
 
-        # scale by zonal extent only, i.e. divide by meridional extent of cells
-        # distribute 0.1 Sv = 1e5 m^3/s over the area to create a flux density map [m^3/s/m^2] = [m/s]
-        latdiff = np.cos(np.deg2rad(ac_fafmip.latitude))
-        # latdiff = (ac_fafmip.latitude.shift(j=-1)-ac_fafmip.latitude.shift(j=1))/2
-        fwf = 1e5/(ac_fafmip/latdiff).sum(['i','j'])*(ac_fafmip/latdiff)  # rate in  [m^3/s]
-        fwf = fwf/ac_fafmip*1e3  # [m^3/s] -> [m/s] -> [kg/m^2/s] @ 1000 kg/m^3
-
+    def create_dataset_structure(self, year=1850):
         # create "scaffold" dataset
-        time = np.array([np.datetime64(f'1850-{m:02d}-01 12:00:00.000000000') for m in range(1,13)])
+        aco = self.areacello
+        time = np.array([np.datetime64(f'{year}-{m:02d}-01 12:00:00.000000000') for m in range(1,13)])
         ds = xr.Dataset(coords={'time_counter':time,
-                                'i':ac.i.values,
-                                'j':ac.j.values,
-                                'longitude': (('j','i'), ac.longitude.values),
-                                'latitude' : (('j','i'),  ac.latitude.values),
+                                'i':aco.i.values,
+                                'j':aco.j.values,
+                                'longitude': (('j','i'), aco.longitude.values),
+                                'latitude' : (('j','i'), aco.latitude.values),
                                 },
-                        data_vars={'sorunoff_f' :(('time_counter','j','i'),np.zeros((12,len(ac.j),len(ac.i)))),
-                                   'socalving_f':(('time_counter','j','i'),np.zeros((12,len(ac.j),len(ac.i))))}
+                        data_vars={'sofwfrnf':(('time_counter','j','i'),np.zeros((12,len(aco.j),len(aco.i)))),
+                                   'sofwfcal':(('time_counter','j','i'),np.zeros((12,len(aco.j),len(aco.i)))),
+                                   'sofwfisf':(('time_counter','j','i'),np.zeros((12,len(aco.j),len(aco.i)))),
+                                   }
                         )
-        # assign 0.1 Sv to runoff forcing, calving remains 0
-        for t in range(12):
-            ds['sorunoff_f'][t,:,:] = fwf
-        
-        for i, quant in enumerate(['sorunoff_f','socalving_f']):
-            if quant=='sorunoff_f': 
+        for i, quant in enumerate(['sofwfrnf','sofwfcal','sofwfisf']):
+            if quant=='sofwfrnf': 
                 long_name = 'forced runoff flux'
-            elif quant=='socalving_f':
+            elif quant=='sofwfcal':
                 long_name = 'forced calving flux'
+            elif quant=='sofwfisf':
+                long_name = 'forced basal melt flux'
             ds[quant] = ds[quant].fillna(0)
             ds[quant].attrs = {'long_name':long_name, 'units':'kg/m^2/s'}
+        return ds
+    
+    def create_antwater_forcing(self):
+        ac_antwater = self.create_Antarctic_coast()
+        # scale by zonal extent only, i.e. divide by meridional extent of cells
+        # distribute 0.1 Sv = 1e5 m^3/s over the area to create a flux density map [m^3/s/m^2] = [m/s]
+        latdiff = np.cos(np.deg2rad(ac_antwater.latitude))
+        # latdiff = (ac_antwater.latitude.shift(j=-1)-ac_antwater.latitude.shift(j=1))/2
+        fwf = 1e5/(ac_antwater/latdiff).sum(['i','j'])*(ac_antwater/latdiff)  # rate in  [m^3/s]
+        fwf = fwf/ac_antwater*1e3  # [m^3/s] -> [m/s] -> [kg/m^2/s] @ 1000 kg/m^3
+        return fwf
 
+    def create_antwater_file(self):
+        """
+        - climatological file without yearly variations
+        - uniformly distributes 0.1 Sv in Antarctica-adjacent NEMO cells
+        - assign 0.1 Sv to runoff forcing, calving & basal melt remain 0
+        """
+        ds = self.create_dataset_structure()
+        fwf = self.create_antwater_forcing()
+        for t in range(12):
+            ds['sofwfrnf'][t,:,:] = fwf
+            ds['sofwfrnf'] = ds['sofwfrnf'].fillna(0)
+        ds.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
+        return
+
+    def create_antwater_lh_file(self):
+        """ assign 0.1 Sv to calving forcing, runoff & basal melt remain 0 """
+        ds = self.create_dataset_structure()
+        fwf = self.create_antwater_forcing()
+        for t in range(12):
+            ds['sofwfcal'][t,:,:] = fwf
+            ds['sofwfcal'] = ds['sofwfcal'].fillna(0)
+        ds.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
+        return
+    
+    def create_antwater_depth_lh_files(self):
+        """ assign 0.1 Sv to calving forcing, runoff & basal melt remain 0 """
+        ds = self.create_dataset_structure()
+        fwf = self.create_antwater_forcing()
+        for t in range(12):
+            ds['sofwfcal'][t,:,:] = fwf
+            ds['sofwfcal'] = ds['sofwfcal'].fillna(0)
         ds.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
         return
 
@@ -191,12 +256,14 @@ class FwfMaps:
         """ """
         ds = xr.open_dataset(self.fn_out)
         ac = self.areacello
-        mean_rate_runoff  = (ac*ds.sorunoff_f ).mean('time_counter').sum(['i','j']).values
-        mean_rate_calving = (ac*ds.socalving_f).mean('time_counter').sum(['i','j']).values
-        mean_rate_total   = mean_rate_runoff + mean_rate_calving
-        print(f'The average runoff  freshwater flux is: {mean_rate_runoff /1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        print(f'The average calving freshwater flux is: {mean_rate_calving/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        print(f'The average total   freshwater flux is: {mean_rate_total  /1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+        mean_rate_rnf = (ac*ds.sofwfrnf).mean('time_counter').sum(['i','j']).values
+        mean_rate_cal = (ac*ds.sofwfcal).mean('time_counter').sum(['i','j']).values
+        mean_rate_isf = (ac*ds.sofwfisf).mean('time_counter').sum(['i','j']).values
+        mean_rate_tot = mean_rate_rnf + mean_rate_cal + mean_rate_isf
+        print(f'The average runoff    freshwater flux is: {mean_rate_rnf /1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+        print(f'The average calving   freshwater flux is: {mean_rate_cal/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+        print(f'The average baal melt freshwater flux is: {mean_rate_isf/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+        print(f'The average total     freshwater flux is: {mean_rate_tot/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
         
         return
 
@@ -205,7 +272,7 @@ if __name__=='__main__':
     """ just for eveline's on-the-fly creation of the maps """
     print(sys.argv)
     resolution = sys.argv[1]
-    exopname = sys.argv[2]
+    expname = sys.argv[2]
     variable = sys.argv[3]
     print(f'hello world: {variable}')
 
