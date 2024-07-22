@@ -118,49 +118,6 @@ class FwfMaps:
         elif self.exp=='eveline':
             pass
 
-    def create_simple_map(self, year):
-        """
-        - calculates total Greenland and Antarctic surface areas
-        - uniformly distributes meltwater in
-        # output: creates 19 GB of files for ORCA025
-        # zipped them with `tar -cvzf simple_forcing.tar.gz simple_forcing`
-        """
-        rmf = xr.open_dataarray(f'{path_grid}/T{self.gifs}-ORCA{self.gnem}/runoff_maps_AIS_GrIS_ORCA{self.gnem}.nc')
-        Aa = self.areacello.where(rmf==66).sum()
-        Ga = self.areacello.where(rmf==1).sum()
-
-        for i, quant in enumerate(['sofwfrnf','sofwfcal']):
-            if quant=='sofwfrnf': 
-                # GrIS: Runoff
-                Q = xr.where(rmf==1,self.GR/Ga,0)
-                long_name = 'forced runoff flux'
-            elif quant=='sofwfcal':
-                # GrIS: Discharge;  AIS:  Discharge + Basal Melt
-                Q = (xr.where(rmf==1,self.GD/Ga,0) + xr.where(rmf==66,(self.AD+self.AB)/Aa,0))
-                long_name = 'forced calving flux'
-            Q = Q*1e12/spy  # [Gt/yr] -> [kg/s]
-            Q.attrs = {'long_name':long_name, 'units':'kg/m^2/s'}
-            Q = Q.rename({'lat':'latitude','lon':'longitude'})
-            t = np.array([np.datetime64(f'{year}-{m:02d}-01 12:00:00.000000000') for m in Q.month.values])
-            Q = Q.assign_coords({'time_counter':('month', t)})
-            Q = Q.drop(['month','year']).rename({'month':'time_counter'})
-            if i==0:
-                Q.name = quant
-                FWF = Q.to_dataset().transpose('time_counter',...)
-            else:
-                FWF[quant] = Q.transpose('time_counter',...)
-        FWF.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
-        return
-
-    def create_complex_maps(self, year):
-        """ iceberg melt = Merino pattern, basal melt = vertically distributed along ice shelf fronts, runoff = negligible """
-        # iceberg melt
-
-        # basal melt
-
-        FWF.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
-        pass
-
     def create_Antarctic_coast(self):
         ac = self.areacello
         ac = ac.fillna(0)
@@ -204,7 +161,7 @@ class FwfMaps:
             ds[quant] = ds[quant].fillna(0)
             ds[quant].attrs = {'long_name':long_name, 'units':'kg/m^2/s'}
         return ds
-    
+
     def create_antwater_forcing(self):
         ac_antwater = self.create_Antarctic_coast()
         # scale by zonal extent only, i.e. divide by meridional extent of cells
@@ -238,7 +195,7 @@ class FwfMaps:
             ds['sofwfcal'] = ds['sofwfcal'].fillna(0)
         ds.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
         return
-    
+
     def create_antwater_depth_lh_files(self):
         """ assign 0.1 Sv to calving forcing, runoff & basal melt remain 0 """
         ds = self.create_dataset_structure()
@@ -251,7 +208,7 @@ class FwfMaps:
 
     def create_eveline_map(self):
         pass
-    
+
     def test_output(self):
         """ """
         ds = xr.open_dataset(self.fn_out)
