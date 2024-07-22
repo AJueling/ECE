@@ -10,6 +10,7 @@ import os
 import sys
 import numpy as np
 import xarray as xr
+import matplotlib.pyplot as plt
 from pathlib import Path
 
 
@@ -45,78 +46,46 @@ class FwfMaps:
     - horizontal coordinates (i,j) as the model resolution requires
     
     """
-    def __init__(self, res, exp):
+    def __init__(self, exp, create=True, test=True):
         """
         - reads areacello.nc for respective grid
         - initialize with 
-        res     resolution ('SR' or 'HR')
         exp     experiment names
         """
-        self.res = res
         self.exp = exp
-        assert exp in ['simple', 'complex', 'eveline'] + sofiamip_exps
+        assert exp in sofiamip_exps
 
-        if res=='SR':    self.gnem, self.gifs = '1', '255'
-        elif res=='HR':  self.gnem, self.gifs = '025', '511'
-
+        self.gnem, self.gifs = '1', '255'
         fn_areacello = f'{path_grid}/T{self.gifs}-ORCA{self.gnem}/areacello.nc'
         if os.path.exists(fn_areacello):    
             self.areacello = xr.open_dataset(fn_areacello).areacello
         else:
             raise ValueError(f'areacello filename: {fn_areacello} does not exist')
-        self.create_forcing_files()
+        
+        if self.exp.startswith('ssp') or self.exp.startswith('hist'):
+            self.fn_out = f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}/FWF_{exp}_ORCA{self.gnem}'
+        else:
+            self.fn_out = f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}/FWF_{exp}_ORCA{self.gnem}.nc'
+
+        if create==True:
+            self.create_forcing_files()
+        if test==True:
+            self.test_output()
         return
 
     def create_forcing_files(self, year=None):
         """ """
-        exp = self.exp
-        if exp in ['simple', 'complex']:
-            assert year is not None
-            dA = xr.open_dataset(f'{path_fwf}/AIS_FWF.nc')
-            dG = xr.open_dataset(f'{path_fwf}/GrIS_FWF.nc')
 
-            if year=='all':
-                years = np.arange(1985,2101)
-            elif type(year)==int:
-                assert year in dA.year
-                years = np.arange(year,year+1)
-            else:
-                raise ValueError('year must be "all" or integer in range(1985,2101)')
-
-            for yr in years:
-                dA_ = dA.sel(year=yr)
-                dG_ = dG.sel(year=yr)
-
-                # Antarctica discharge and basal melt
-                self.AD = dA_.D*dA.D_seasonality
-                self.AB = dA_.B*dA.B_seasonality
-
-                # Greenland discharge and runoff
-                self.GD = dG_.D*dG.D_seasonality
-                self.GR = dG_.R*dG.R_seasonality
-
-                self.fn_out = f'{path_fwfmap_files}/{self.exp}_forcing/FWF_{self.exp}_ORCA{self.gnem}_y{yr}.nc'
-
-                if self.exp=='simple':
-                    self.create_simple_map(year=yr)
-                elif self.exp=='complex':
-                    self.create_complex_maps(year=yr)
-                
-                self.test_output()
-
-        elif exp in sofiamip_exps:
-            self.fn_out = f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}/FWF_{exp}_ORCA{self.gnem}.nc'
-            Path(f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{exp}').mkdir(parents=True, exist_ok=True)
-            if exp=='antwater':
-                self.create_antwater_file()
-            elif exp=='antwater-lh':
-                self.create_antwater_lh_file()
-            elif exp=='antwater-depth-lh':
-                self.create_antwater_depth_lh_files()
-            self.test_output()
-
-        elif self.exp=='eveline':
-            pass
+        Path(f'/ec/res4/hpcperm/nkaj/forcing/SOFIAMIP/{self.exp}').mkdir(parents=True, exist_ok=True)
+        if self.exp=='antwater':
+            self.create_antwater_file()
+        elif self.exp=='antwater-lh':
+            self.create_antwater_lh_file()
+        elif self.exp=='antwater-depth-lh':
+            self.create_antwater_depth_lh_files()
+        elif self.exp.startswith('hist') or self.exp.startswith('ssp'):
+            self.create_hist_ssp_files()
+        return
 
     def create_Antarctic_coast(self):
         ac = self.areacello
@@ -206,31 +175,95 @@ class FwfMaps:
         ds.to_netcdf(self.fn_out, unlimited_dims=['time_counter'])
         return
 
-    def create_eveline_map(self):
-        pass
-
-    def test_output(self):
-        """ """
-        ds = xr.open_dataset(self.fn_out)
-        ac = self.areacello
-        mean_rate_rnf = (ac*ds.sofwfrnf).mean('time_counter').sum(['i','j']).values
-        mean_rate_cal = (ac*ds.sofwfcal).mean('time_counter').sum(['i','j']).values
-        mean_rate_isf = (ac*ds.sofwfisf).mean('time_counter').sum(['i','j']).values
-        mean_rate_tot = mean_rate_rnf + mean_rate_cal + mean_rate_isf
-        print(f'The average runoff    freshwater flux is: {mean_rate_rnf /1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        print(f'The average calving   freshwater flux is: {mean_rate_cal/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        print(f'The average baal melt freshwater flux is: {mean_rate_isf/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        print(f'The average total     freshwater flux is: {mean_rate_tot/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
-        
+    def time_dependent_factor(self, year, month):
+        if self.exp.startswith('hist'):
+            # the 10 in there because the antwater forcing it is multiplied with is 0.1 Sv
+            # so now the factor*antwater adds up to the required amount
+            if self.exp.endswith('70-01'):
+                t = (year-1970) + month/12
+                rate = 0.1e-3  # Sv/yr
+            elif self.exp.endswith('70-03'):
+                t = (year-1970) + month/12
+                rate = 0.3e-3
+            elif self.exp.endswith('70-05'):
+                t = (year-1970) + month/12
+                rate = 0.5e-3
+            elif self.exp.endswith('92-11'):
+                t = (year-1992) + month/12
+                rate = 1.1e-3
+            factor = 10*rate*t
+        elif self.exp=='ssp126-ismip6-water':
+            factor = 0.15
+            # this multiplied with 0.1 Sv results in the 0.015 Sv
+        elif self.exp=='ssp585-ismip6-water':
+            # see eqn A1 and Table A2 in Swart et al.
+            # fit in Gt/yr
+            t = (year-2015) + month/12
+            A = 5.18e2
+            K = 3.14e3
+            B = 0.21
+            v = 3.85e-5
+            Q = 1.48e1
+            factor = (A+(K-A)/(1+Q*np.exp(-B*t)))/.55  # in Gt/yr
+            Sv_per_Gtpy = 3.17e-5
+            factor *= Sv_per_Gtpy  # [Gt/yr] -> [Sv]
+        else:
+            raise ValueError(f'exp should be hist or ssp, but exp={self.exp}')
+        return factor
+    
+    def create_hist_ssp_files(self):
+        fwf = self.create_antwater_forcing()
+        if self.exp.startswith('hist-antwater-70'):
+            start_year = 1970
+            end_year = 2020
+        if self.exp.startswith('hist-antwater-92'):
+            start_year = 1992
+            end_year = 2020
+        if self.exp.startswith('ssp'):
+            start_year = 2015
+            end_year = 2100
+        for y in range(start_year,end_year+1):
+            ds = self.create_dataset_structure(year=y)
+            for t in range(12):
+                factor = self.time_dependent_factor(year=y,month=t+1)
+                ds['sofwfrnf'][t,:,:] = factor*fwf
+                ds['sofwfrnf'] = ds['sofwfrnf'].fillna(0)
+            ds.to_netcdf(f'{self.fn_out}_y{y}.nc', unlimited_dims=['time_counter'])
         return
 
+    def test_output(self):
+        """ calculates the annual average """
+        ac = self.areacello
+        if self.exp.startswith('ssp') or self.exp.startswith('hist'):
+            ds = xr.open_mfdataset(self.fn_out+'*')
+            rnf = (ac*ds.sofwfrnf).sum(['i','j']).values
+            cal = (ac*ds.sofwfcal).sum(['i','j']).values
+            isf = (ac*ds.sofwfisf).sum(['i','j']).values
+            tot = rnf + cal + isf
+            plt.figure()
+            time = ds['time_counter']
+            plt.plot(time, rnf/1e9, label='rnf')
+            plt.plot(time, cal/1e9, label='cal')
+            plt.plot(time, isf/1e9, label='isf')
+            plt.plot(time, tot/1e9, label='tot', ls='--')
+            plt.legend()
+            plt.title(self.exp)
+            plt.ylabel('time  [year]')
+            plt.ylabel('freshwater flux  [Sv]')
+            print(f'The average runoff     freshwater flux is: {rnf.mean()/1e9:.4f} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average calving    freshwater flux is: {cal.mean()/1e9:.4f} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average basal melt freshwater flux is: {isf.mean()/1e9:.4f} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average total      freshwater flux is: {tot.mean()/1e9:.4f} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
 
-if __name__=='__main__':
-    """ just for eveline's on-the-fly creation of the maps """
-    print(sys.argv)
-    resolution = sys.argv[1]
-    expname = sys.argv[2]
-    variable = sys.argv[3]
-    print(f'hello world: {variable}')
-
-    FwfMaps(res=resolution, exp=expname).create_simple_map(variable)
+        else:  # climatological files
+            assert os.path.exists(self.fn_out)
+            ds = xr.open_dataset(self.fn_out)
+            mean_rate_rnf = (ac*ds.sofwfrnf).mean('time_counter').sum(['i','j']).values
+            mean_rate_cal = (ac*ds.sofwfcal).mean('time_counter').sum(['i','j']).values
+            mean_rate_isf = (ac*ds.sofwfisf).mean('time_counter').sum(['i','j']).values
+            mean_rate_tot = mean_rate_rnf + mean_rate_cal + mean_rate_isf
+            print(f'The average runoff     freshwater flux is: {mean_rate_rnf /1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average calving    freshwater flux is: {mean_rate_cal/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average basal melt freshwater flux is: {mean_rate_isf/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+            print(f'The average total      freshwater flux is: {mean_rate_tot/1e9} Sv')  # [kg/m^2/s]*[m^2] -> [Sv]
+        return
